@@ -9,11 +9,14 @@ Design (from the live top-rank analysis of 1,108 entries, snapshot 18 Nov
   legibility and faithful attribution, and the bottom-ranked entries are all
   photorealistic one-scene art with almost no text.
 - THE DIFFERENTIATOR (user request): the event pictures are BIG. Two
-  dramatic painted panels fill the top ~45% of the page: the Kerch Bridge
-  collapse (left, wide) and the Bahrain firefight (right). In the rank-1
+  dramatic PHOTOGRAPHS fill the top ~45% of the page: the Kerch Bridge
+  collapse (left, wide) and the Bahrain firefight (right), stored as
+  assets/hero_kerch.jpg and assets/hero_bahrain.jpg and pasted in by
+  this builder (v2: NO code-painted shapes for the heroes — the v1
+  Pillow-painted panels looked flat/cartoonish). In the rank-1
   entry the lead photos were only ~320 px wide; here the Kerch panel is
   640 px wide and 452 px tall, so the smoke, fire and fallen span are
-  visible at a glance. Headlines sit in dark caption bands over the art,
+  visible at a glance. Headlines sit in dark caption bands over the photos,
   so they stay legible.
 - Below the hero: 8 featured stories in two rows of four (each with its
   own small flat illustration in its region colour), then 22 one-line
@@ -43,15 +46,15 @@ W, H = 1024, 1024
 SEED = 20261118
 
 # ---------------------------------------------------------------- palette
-NAVY = (10, 40, 118)
+NAVY = (8, 46, 150)
 NAVY2 = (16, 66, 168)
 DARKBAND = (9, 26, 54)
 PAPER = (253, 249, 238)
 PAPER2 = (248, 243, 228)
 INK = (22, 22, 22)
 GREY = (90, 90, 90)
-RED = (232, 22, 52)
-GOLD = (226, 178, 32)
+RED = (238, 18, 58)
+GOLD = (242, 192, 28)
 CREAM = (252, 249, 240)
 BLUE = (18, 96, 168)     # Europe
 RUST = (206, 62, 40)     # Middle East
@@ -110,6 +113,19 @@ def vgrad(img, box, top, bottom):
         t = (yy - y0) / h
         c = tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
         img.paste(c, (x0, yy, x1, yy + 1))
+
+
+def paste_photo(img, path, x0, y0, x1, y1):
+    """Paste a photorealistic hero asset into a panel, cropped to fill,
+    with a small saturation/contrast lift so the colours stay vivid.
+    Deterministic: fixed crop centering, fixed enhancement factors."""
+    from PIL import ImageEnhance, ImageOps
+    photo = Image.open(path).convert("RGB")
+    photo = ImageOps.fit(photo, (x1 - x0, y1 - y0), method=Image.LANCZOS,
+                         centering=(0.5, 0.45))
+    photo = ImageEnhance.Color(photo).enhance(1.15)
+    photo = ImageEnhance.Contrast(photo).enhance(1.05)
+    img.paste(photo, (x0, y0))
 
 
 # ------------------------------------------------------------------- data
@@ -276,164 +292,11 @@ def icon(draw, kind, x, y, s, ink, accent):
 
 
 # ------------------------------------------------------------ hero scenes
-def smoke(img, cx, cy, spread_x, spread_y, rng, n=40):
-    """Soft smoke: many overlapping semi-transparent dark ellipses on an
-    RGBA overlay, composited back — no hard balloon edges."""
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    od = ImageDraw.Draw(overlay)
-    for _ in range(n):
-        ox = rng.uniform(-spread_x, spread_x)
-        oy = rng.uniform(-spread_y, spread_y * 0.6)
-        rx = rng.uniform(10, 36)
-        ry = rng.uniform(8, 24)
-        shade = rng.choice([22, 32, 45, 58, 72])
-        alpha = rng.randint(150, 215)
-        od.ellipse([cx + ox - rx, cy + oy - ry, cx + ox + rx, cy + oy + ry],
-                   fill=(shade, shade, shade + 4, alpha))
-    img.paste(Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB"),
-              (0, 0))
-
-
-def fireburst(d, cx, cy, r, rng):
-    """Explosion: orange glow halo, short spikes, yellow heart."""
-    d.ellipse([cx - r * 1.05, cy - r * 0.75, cx + r * 1.05, cy + r * 0.75],
-              fill=(198, 72, 12))
-    for ang in range(0, 360, 30):
-        a = math.radians(ang + rng.uniform(-8, 8))
-        ln = r * rng.uniform(0.7, 1.1)
-        x2, y2 = cx + math.cos(a) * ln, cy + math.sin(a) * ln * 0.7
-        col = rng.choice([(232, 90, 12), (240, 140, 20), (220, 40, 20)])
-        d.line([cx, cy, x2, y2], fill=col, width=4)
-    d.ellipse([cx - r * 0.50, cy - r * 0.38, cx + r * 0.50, cy + r * 0.38],
-              fill=(250, 120, 10))
-    d.ellipse([cx - r * 0.26, cy - r * 0.20, cx + r * 0.26, cy + r * 0.20],
-              fill=(255, 205, 40))
-
-
-def hero_kerch(img, x0, y0, x1, y1):
-    """The Kerch Bridge collapse: storm sky, broken arch, black smoke,
-    fire at the break, span fallen into the strait. Painted in code."""
-    rng = random.Random(SEED + 1)
-    d = ImageDraw.Draw(img)
-    w, h = x1 - x0, y1 - y0
-    # storm sky: dark slate to bruised orange at the horizon
-    vgrad(img, (x0, y0, x1, y0 + int(h * 0.52)), (38, 44, 58), (122, 96, 74))
-    # low cloud banks: flat, dark, few
-    for _ in range(8):
-        cx = x0 + rng.uniform(0, w)
-        cy = y0 + rng.uniform(0, h * 0.26)
-        rx, ry = rng.uniform(60, 140), rng.uniform(8, 16)
-        d.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=(46, 50, 64))
-    # distant headlands: low and flat
-    d.polygon([(x0, y0 + h * 0.52), (x0 + w * 0.22, y0 + h * 0.46),
-               (x0 + w * 0.38, y0 + h * 0.52)], fill=(58, 60, 66))
-    d.polygon([(x1, y0 + h * 0.52), (x1 - w * 0.24, y0 + h * 0.47),
-               (x1 - w * 0.40, y0 + h * 0.52)], fill=(52, 54, 60))
-    # sea: dark steel blue with wave strokes
-    vgrad(img, (x0, y0 + int(h * 0.52), x1, y1), (52, 72, 92), (24, 38, 58))
-    for _ in range(46):
-        wx = x0 + rng.uniform(0, w)
-        wy = y0 + rng.uniform(h * 0.56, h * 0.97)
-        ln = rng.uniform(14, 60)
-        col = rng.choice([(150, 175, 200), (110, 135, 165), (190, 205, 220)])
-        d.line([wx, wy, wx + ln, wy], fill=col, width=2)
-    # bridge deck (left, intact) and piers
-    deck_y = y0 + int(h * 0.50)
-    d.rectangle([x0, deck_y, x1, deck_y + 10], fill=(30, 32, 38))
-    for px in (0.08, 0.24, 0.40, 0.78, 0.92):
-        d.rectangle([x0 + w * px, deck_y + 10, x0 + w * px + 12,
-                     y0 + int(h * 0.72)], fill=(40, 42, 48))
-    # intact arch, left half
-    d.arc([x0 + w * 0.06, deck_y - 92, x0 + w * 0.44, deck_y + 40], 180, 360,
-          fill=(210, 210, 215), width=7)
-    for t in (0.15, 0.25, 0.35):
-        sx = x0 + w * t
-        d.line([sx, deck_y - 58, sx, deck_y], fill=(210, 210, 215), width=3)
-    # broken arch: leaning stub + fallen span in the water
-    d.line([x0 + w * 0.52, deck_y, x0 + w * 0.60, deck_y - 62],
-           fill=(190, 190, 195), width=7)
-    d.polygon([(x0 + w * 0.58, deck_y + 8), (x0 + w * 0.74, deck_y + 66),
-               (x0 + w * 0.70, deck_y + 74), (x0 + w * 0.55, deck_y + 16)],
-              fill=(36, 38, 44))
-    d.polygon([(x0 + w * 0.62, deck_y + 70), (x0 + w * 0.80, deck_y + 96),
-               (x0 + w * 0.78, deck_y + 104), (x0 + w * 0.60, deck_y + 78)],
-              fill=(28, 30, 36))
-    # debris in the water
-    for _ in range(12):
-        dx = x0 + rng.uniform(w * 0.52, w * 0.86)
-        dy = y0 + rng.uniform(h * 0.72, h * 0.92)
-        d.polygon([(dx, dy), (dx + rng.uniform(8, 26), dy + rng.uniform(2, 8)),
-                   (dx + rng.uniform(2, 12), dy + rng.uniform(8, 16))],
-                  fill=(44, 46, 52))
-    # fire at the break point + smaller fire on the water
-    fireburst(d, x0 + w * 0.56, deck_y - 6, 30, rng)
-    fireburst(d, x0 + w * 0.72, y0 + int(h * 0.78), 16, rng)
-    # huge black smoke column over the break
-    smoke(img, x0 + w * 0.58, y0 + h * 0.16, w * 0.16, h * 0.12, rng, n=30)
-    smoke(img, x0 + w * 0.30, y0 + h * 0.10, w * 0.12, h * 0.07, rng, n=14)
-    # drones: tiny silhouettes with red lights
-    for _ in range(9):
-        dx = x0 + rng.uniform(w * 0.05, w * 0.95)
-        dy = y0 + rng.uniform(h * 0.05, h * 0.30)
-        d.ellipse([dx - 4, dy - 2, dx + 4, dy + 2], fill=(15, 15, 18))
-        d.ellipse([dx - 1, dy - 1, dx + 1, dy + 1], fill=(255, 40, 40))
-    # rain streaks
-    for _ in range(60):
-        rx = x0 + rng.uniform(0, w)
-        ry = y0 + rng.uniform(0, h * 0.45)
-        d.line([rx, ry, rx - 5, ry + 14], fill=(170, 180, 195), width=1)
-
-
-def hero_bahrain(img, x0, y0, x1, y1):
-    """Night over Bahrain: black sky, orange fireballs, missile trails,
-    skyline silhouette and a radar dome. Painted in code."""
-    rng = random.Random(SEED + 2)
-    d = ImageDraw.Draw(img)
-    w, h = x1 - x0, y1 - y0
-    vgrad(img, (x0, y0, x1, y1), (8, 10, 26), (52, 26, 18))
-    # stars
-    for _ in range(40):
-        sx = x0 + rng.uniform(0, w)
-        sy = y0 + rng.uniform(0, h * 0.40)
-        d.ellipse([sx - 1, sy - 1, sx + 1, sy + 1], fill=(220, 220, 235))
-    # faint ember glow low on the horizon (flat band, not a disc)
-    d.rectangle([x0, y0 + int(h * 0.68), x1, y0 + int(h * 0.76)],
-                fill=(110, 48, 18))
-    # missile trails arcing across the sky
-    for i in range(5):
-        sx = x0 + w * (0.08 + i * 0.16)
-        sy = y0 + h * (0.06 + (i % 3) * 0.08)
-        ex = sx + w * 0.22
-        ey = sy + h * 0.22
-        d.line([sx, sy, ex, ey], fill=(255, 190, 90), width=3)
-        d.ellipse([ex - 5, ey - 5, ex + 5, ey + 5], fill=(255, 220, 120))
-    # big fireballs
-    fireburst(d, x0 + w * 0.62, y0 + h * 0.52, 30, rng)
-    fireburst(d, x0 + w * 0.28, y0 + h * 0.62, 22, rng)
-    smoke(img, x0 + w * 0.62, y0 + h * 0.30, w * 0.18, h * 0.12, rng, n=22)
-    smoke(img, x0 + w * 0.28, y0 + h * 0.42, w * 0.12, h * 0.08, rng, n=12)
-    # skyline silhouette
-    base = y0 + int(h * 0.78)
-    bx = x0
-    while bx < x1:
-        bw = rng.uniform(18, 46)
-        bh = rng.uniform(30, 110)
-        d.rectangle([bx, base - bh, bx + bw, y1], fill=(12, 12, 18))
-        for _ in range(int(bh // 14)):
-            wx = bx + rng.uniform(3, max(4, bw - 5))
-            wy = base - rng.uniform(6, bh - 6)
-            d.rectangle([wx, wy, wx + 3, wy + 4], fill=(255, 190, 80))
-        bx += bw + 2
-    # radar dome + dish, bottom left
-    d.ellipse([x0 + 18, base - 34, x0 + 66, base + 6], fill=(225, 225, 230))
-    d.line([x0 + 42, base - 34, x0 + 78, base - 62], fill=(225, 225, 230), width=4)
-    d.ellipse([x0 + 72, base - 68, x0 + 86, base - 54], fill=(255, 120, 40))
-    # drones
-    for _ in range(6):
-        dx = x0 + rng.uniform(w * 0.1, w * 0.9)
-        dy = y0 + rng.uniform(h * 0.12, h * 0.38)
-        d.ellipse([dx - 4, dy - 2, dx + 4, dy + 2], fill=(5, 5, 8))
-        d.ellipse([dx - 1, dy - 1, dx + 1, dy + 1], fill=(255, 60, 40))
+# v2: heroes are photographs pasted in by paste_photo() above (see the
+# build() hero section). The v1 code-painted hero scenes were deleted:
+# they looked flat/cartoonish, which is exactly what the user complained
+# about. (The small flat icons for the 8 featured stories are kept —
+# they are icons, not the heroes.)
 
 # ------------------------------------------------------------------- map
 # Rough continent polygons in map-box fractions (recognisable, not exact).
@@ -484,8 +347,9 @@ def build():
     hy0, hy1 = 104, 556
     kx0, kx1 = M, 656          # Kerch panel (wide)
     bx0, bx1 = 664, W - M      # Bahrain panel
-    hero_kerch(img, kx0, hy0, kx1, hy1)
-    hero_bahrain(img, bx0, hy0, bx1, hy1)
+    here = Path(__file__).resolve().parent
+    paste_photo(img, here / "assets" / "hero_kerch.jpg", kx0, hy0, kx1, hy1)
+    paste_photo(img, here / "assets" / "hero_bahrain.jpg", bx0, hy0, bx1, hy1)
     d.rectangle([kx0, hy0, kx1, hy1], outline=NAVY, width=2)
     d.rectangle([bx0, hy0, bx1, hy1], outline=NAVY, width=2)
     # number badges
@@ -593,7 +457,7 @@ def build():
            "Disputed claims are attributed.",
            font=font(SANS, 9), fill=GREY)
     d.text((M, fy + 17),
-           "Sources: Reuters, AP, BBC, CNN, IMD, India MEA. Original drawings.",
+           "Sources: Reuters, AP, BBC, CNN, IMD, India MEA. Hero images are AI-generated illustrations.",
            font=font(SANS, 9), fill=GREY)
     vignette(d)
     return img
